@@ -1,26 +1,161 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
+
+/* Laika design system — schematic aerospace aesthetic.
+   Three layers of tokens:
+     1. Raw Laika palette (--void, --line, --phosphor, --amber, --red, ...).
+     2. shadcn semantic tokens (--background, --foreground, ...) mapped onto Laika values.
+     3. Tailwind @theme bindings so utility classes like `bg-void` and `text-amber` work.
+*/
 
 @theme inline {
+  /* shadcn semantic tokens (kept for compatibility with shadcn-derived components) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Laika raw tokens — surfaced as Tailwind utility colors */
+  --color-void: var(--void);
+  --color-line: var(--line);
+  --color-line-mid: var(--line-mid);
+  --color-line-dim: var(--line-dim);
+  --color-line-ghost: var(--line-ghost);
+  --color-phosphor: var(--phosphor);
+  --color-phosphor-dim: var(--phosphor-dim);
+  --color-phosphor-glow: var(--phosphor-glow);
+  --color-amber: var(--amber);
+  --color-amber-mid: var(--amber-mid);
+  --color-amber-dim: var(--amber-dim);
+  --color-red: var(--red);
+  --color-red-dim: var(--red-dim);
+
+  --font-sans: var(--font-ibm-plex-mono);
+  --font-mono: var(--font-ibm-plex-mono);
+  --font-heading: var(--font-ibm-plex-mono);
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Light mode — "blueprint printout".
+   The --amber token is the project's secondary/metadata accent; in light mode
+   it carries blueprint blue (#2b4a6e) instead of the dark-mode amber, so the
+   page reads like an actual aerospace blueprint. Class names like `text-amber`
+   still apply — the token name stays stable, only the resolved color flips. */
+:root {
+  --void: #ffffff;
+  --line: #000000;
+  --line-mid: rgba(0, 0, 0, 0.55);
+  --line-dim: rgba(0, 0, 0, 0.22);
+  --line-ghost: rgba(0, 0, 0, 0.08);
+
+  --phosphor: #3abd6f;
+  --phosphor-dim: rgba(58, 189, 111, 0.15);
+  --phosphor-glow: rgba(58, 189, 111, 0.06);
+
+  --amber: #1e5a9e;
+  --amber-mid: rgba(30, 90, 158, 0.8);
+  --amber-dim: rgba(30, 90, 158, 0.55);
+
+  --red: #b84040;
+  --red-dim: rgba(184, 64, 64, 0.15);
+
+  /* shadcn semantic mapping */
+  --background: var(--void);
+  --foreground: var(--line);
+  --card: var(--void);
+  --card-foreground: var(--line);
+  --popover: var(--void);
+  --popover-foreground: var(--line);
+  --primary: var(--line);
+  --primary-foreground: var(--void);
+  --secondary: var(--line-ghost);
+  --secondary-foreground: var(--line);
+  --muted: var(--line-ghost);
+  --muted-foreground: var(--line-mid);
+  --accent: var(--phosphor);
+  --accent-foreground: var(--void);
+  --destructive: var(--red);
+  --border: var(--line-dim);
+  --input: var(--line-dim);
+  --ring: var(--phosphor);
+
+  --radius: 0px;
+}
+
+/* Dark mode — "terminal display" */
+.dark {
+  --void: #000000;
+  --line: #ffffff;
+  --line-mid: rgba(255, 255, 255, 0.55);
+  --line-dim: rgba(255, 255, 255, 0.22);
+  --line-ghost: rgba(255, 255, 255, 0.08);
+
+  --phosphor: #3abd6f;
+  --phosphor-dim: rgba(58, 189, 111, 0.15);
+  --phosphor-glow: rgba(58, 189, 111, 0.06);
+
+  --amber: #e0b84a;
+  --amber-mid: rgba(224, 184, 74, 0.8);
+  --amber-dim: rgba(224, 184, 74, 0.55);
+
+  --red: #b84040;
+  --red-dim: rgba(184, 64, 64, 0.15);
+
+  --background: var(--void);
+  --foreground: var(--line);
+  --card: var(--void);
+  --card-foreground: var(--line);
+  --popover: var(--void);
+  --popover-foreground: var(--line);
+  --primary: var(--line);
+  --primary-foreground: var(--void);
+  --secondary: var(--line-ghost);
+  --secondary-foreground: var(--line);
+  --muted: var(--line-ghost);
+  --muted-foreground: var(--line-mid);
+  --accent: var(--phosphor);
+  --accent-foreground: var(--void);
+  --destructive: var(--red);
+  --border: var(--line-dim);
+  --input: var(--line-dim);
+  --ring: var(--phosphor);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    @apply font-sans;
+    background-color: var(--void);
+    color: var(--line);
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01" on, "calt" off;
+  }
 }
