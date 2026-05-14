@@ -206,9 +206,12 @@ export default async function Home() {
           <Crosshair />
           <Label>Daily Prompt — Awaiting Input</Label>
         </div>
-        <h1 className="text-[24px] font-light leading-snug tracking-[0.06em] text-line">
-          WHAT ARE YOU CARRYING TODAY?
+        <h1 className="text-[20px] font-light italic leading-snug tracking-[0.02em] text-line sm:text-[24px]">
+          “The limits of my language means the limits of my world.”
         </h1>
+        <p className="mt-3 text-[10px] uppercase tracking-[0.14em] text-amber-dim">
+          — Ludwig Wittgenstein
+        </p>
         <div className="mt-4">
           <Ruler count={40} />
         </div>
