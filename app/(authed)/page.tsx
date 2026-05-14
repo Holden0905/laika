@@ -204,7 +204,7 @@ export default async function Home() {
       <div className="mb-8">
         <div className="mb-3 flex items-center gap-2">
           <Crosshair />
-          <Label>Daily Prompt — Awaiting Input</Label>
+          <Label>Daily Inscription</Label>
         </div>
         <h1 className="text-[20px] font-light italic leading-snug tracking-[0.02em] text-line sm:text-[24px]">
           “The limits of my language means the limits of my world.”
