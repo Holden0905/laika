@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { name: "Reflections", href: "/reflections" },
   { name: "Prompts", href: "/prompts" },
   { name: "Satellites", href: "/satellites" },
+  { name: "Directives", href: "/directives" },
   { name: "Export", href: "/export" },
 ]
 
