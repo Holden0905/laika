@@ -5,6 +5,7 @@ import type {
 } from "./markdown"
 
 type EntryRow = {
+  id: string
   entry_number: number
   title: string | null
   body: string
@@ -45,6 +46,7 @@ export async function fetchJournalEntriesForExport(
     .from("entries_with_number")
     .select(
       `
+      id,
       entry_number,
       title,
       body,
@@ -62,6 +64,7 @@ export async function fetchJournalEntriesForExport(
   // Supabase TS inference treats single FK relations as arrays; runtime returns objects (CLAUDE.md).
   const rows = (data as unknown as EntryRow[] | null) ?? []
   return rows.map((row) => ({
+    id: row.id,
     entry_number: row.entry_number,
     title: row.title,
     body: row.body,
@@ -69,6 +72,38 @@ export async function fetchJournalEntriesForExport(
     mood: row.mood,
     tags: flattenTags(row.entry_tags),
   }))
+}
+
+/**
+ * Returns the set of artifact IDs (entries + responses) that this user has
+ * previously exported, plus the most recent export timestamp per artifact.
+ * Failure is non-fatal — if the table is missing or unreadable we return
+ * empty sets so the picker still renders. Means everything looks "new" until
+ * the migration is applied.
+ */
+export async function fetchExportedArtifacts(supabase: SupabaseClient): Promise<{
+  entries: Map<string, string>
+  responses: Map<string, string>
+}> {
+  const result = {
+    entries: new Map<string, string>(),
+    responses: new Map<string, string>(),
+  }
+
+  const { data, error } = await supabase
+    .from("exports_log")
+    .select("artifact_type, artifact_id, exported_at")
+    .order("exported_at", { ascending: false })
+
+  if (error || !data) return result
+
+  type Row = { artifact_type: "entry" | "response"; artifact_id: string; exported_at: string }
+  for (const row of data as Row[]) {
+    const target = row.artifact_type === "entry" ? result.entries : result.responses
+    // First write wins because we ordered DESC — that's the most recent timestamp.
+    if (!target.has(row.artifact_id)) target.set(row.artifact_id, row.exported_at)
+  }
+  return result
 }
 
 export async function fetchReflectionResponsesForExport(

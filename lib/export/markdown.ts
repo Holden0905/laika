@@ -44,6 +44,7 @@ function bodyFooter(indexNote: string, tags: string[]): string[] {
 }
 
 export type JournalEntryForExport = {
+  id: string
   entry_number: number
   title: string | null
   body: string

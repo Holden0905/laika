@@ -11,8 +11,6 @@ import {
   type ExportFile,
 } from "@/lib/export/markdown"
 
-const VALID_SCOPES = new Set(["all", "journal", "reflections"])
-
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const {
@@ -23,35 +21,72 @@ export async function POST(request: NextRequest) {
   }
 
   const formData = await request.formData()
-  const scope = String(formData.get("scope") ?? "all")
-  if (!VALID_SCOPES.has(scope)) {
-    return NextResponse.json({ error: "Invalid scope." }, { status: 400 })
+  const entryIds = new Set(formData.getAll("entryIds").map((v) => String(v)))
+  const responseIds = new Set(formData.getAll("responseIds").map((v) => String(v)))
+
+  if (entryIds.size === 0 && responseIds.size === 0) {
+    return NextResponse.redirect(
+      new URL("/export?error=Select+at+least+one+artifact+to+extract.", request.url),
+      { status: 303 }
+    )
   }
 
   try {
     const files: ExportFile[] = []
+    const exportedEntryIds: string[] = []
+    const exportedResponseIds: string[] = []
 
-    if (scope === "all" || scope === "journal") {
+    if (entryIds.size > 0) {
       const entries = await fetchJournalEntriesForExport(supabase)
-      for (const e of entries) files.push(buildJournalMarkdown(e))
+      for (const e of entries) {
+        if (!entryIds.has(e.id)) continue
+        files.push(buildJournalMarkdown(e))
+        exportedEntryIds.push(e.id)
+      }
     }
-    if (scope === "all" || scope === "reflections") {
+    if (responseIds.size > 0) {
       const responses = await fetchReflectionResponsesForExport(supabase)
-      for (const r of responses) files.push(buildReflectionMarkdown(r))
+      for (const r of responses) {
+        if (!responseIds.has(r.response_id)) continue
+        files.push(buildReflectionMarkdown(r))
+        exportedResponseIds.push(r.response_id)
+      }
     }
 
     if (files.length === 0) {
       return NextResponse.redirect(
-        new URL("/export?error=No+data+to+export+for+this+scope.", request.url),
+        new URL("/export?error=Selected+artifacts+were+not+found.", request.url),
         { status: 303 }
       )
     }
 
-    // Log this export. Failure to log shouldn't fail the download — diagnostics
-    // can be slightly stale rather than blocking the user from getting their files.
-    await supabase
-      .from("exports")
-      .insert({ user_id: user.id, scope, file_count: files.length })
+    // Log bulk header for the home-page diagnostics count, and the per-artifact
+    // stamps the picker reads. Failure here is non-fatal — the user still gets
+    // their files; the next picker render just won't badge these as exported.
+    const scope =
+      exportedEntryIds.length > 0 && exportedResponseIds.length > 0
+        ? "all"
+        : exportedEntryIds.length > 0
+          ? "journal"
+          : "reflections"
+
+    await Promise.all([
+      supabase
+        .from("exports")
+        .insert({ user_id: user.id, scope, file_count: files.length }),
+      supabase.from("exports_log").insert([
+        ...exportedEntryIds.map((id) => ({
+          user_id: user.id,
+          artifact_type: "entry",
+          artifact_id: id,
+        })),
+        ...exportedResponseIds.map((id) => ({
+          user_id: user.id,
+          artifact_type: "response",
+          artifact_id: id,
+        })),
+      ]),
+    ])
 
     const datestamp = new Date().toISOString().slice(0, 10)
 
@@ -67,7 +102,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Multi-file: zip with subdirectory structure baked into the file.path.
     const zipPayload: Record<string, Uint8Array> = {}
     for (const f of files) {
       zipPayload[f.path] = strToU8(f.content)
