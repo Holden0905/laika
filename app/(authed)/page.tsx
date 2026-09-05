@@ -12,6 +12,8 @@ import {
 import { EntryCard, type EntryCardData } from "@/components/journal/entry-card"
 import { ReflectionProgressBar } from "@/components/reflections/progress-bar"
 import { BleedBackground } from "@/components/bleed-background"
+import { DeepSpacePing } from "@/components/trajectories/deep-space-ping"
+import { fetchTrajectoryPing } from "@/lib/trajectories/queries"
 import { currentIsoWeek, formatWeekRange } from "@/lib/reflections/format"
 import {
   classifySatellite,
@@ -80,6 +82,7 @@ export default async function Home() {
     currentReflectionRes,
     promptsRes,
     exportCountRes,
+    pingTrajectory,
   ] = await Promise.all([
     supabase
       .from("entries_with_number")
@@ -123,6 +126,7 @@ export default async function Home() {
     supabase
       .from("exports")
       .select("*", { count: "exact", head: true }),
+    fetchTrajectoryPing(supabase, now),
   ])
 
   // Supabase TS inference treats single FK relations as arrays; runtime returns objects (CLAUDE.md).
@@ -347,6 +351,16 @@ export default async function Home() {
               </Link>
             )}
           </section>
+
+          {/* Deep space ping — hidden entirely when nothing is in play. */}
+          {pingTrajectory ? (
+            <section>
+              <div className="mb-4">
+                <SectionHeader label="Deep Space Ping — Long-Horizon Vector" />
+              </div>
+              <DeepSpacePing trajectory={pingTrajectory} />
+            </section>
+          ) : null}
 
           {/* System diagnostics */}
           <section>

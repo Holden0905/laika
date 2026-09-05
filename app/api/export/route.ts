@@ -8,8 +8,10 @@ import {
 import {
   buildJournalMarkdown,
   buildReflectionMarkdown,
+  buildTrajectoryMarkdown,
   type ExportFile,
 } from "@/lib/export/markdown"
+import { fetchTrajectoriesForExport } from "@/lib/trajectories/queries"
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -23,8 +25,9 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const entryIds = new Set(formData.getAll("entryIds").map((v) => String(v)))
   const responseIds = new Set(formData.getAll("responseIds").map((v) => String(v)))
+  const trajectoryIds = new Set(formData.getAll("trajectoryIds").map((v) => String(v)))
 
-  if (entryIds.size === 0 && responseIds.size === 0) {
+  if (entryIds.size === 0 && responseIds.size === 0 && trajectoryIds.size === 0) {
     return NextResponse.redirect(
       new URL("/export?error=Select+at+least+one+artifact+to+extract.", request.url),
       { status: 303 }
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest) {
     const files: ExportFile[] = []
     const exportedEntryIds: string[] = []
     const exportedResponseIds: string[] = []
+    const exportedTrajectoryIds: string[] = []
 
     if (entryIds.size > 0) {
       const entries = await fetchJournalEntriesForExport(supabase)
@@ -53,6 +57,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (trajectoryIds.size > 0) {
+      const trajectories = await fetchTrajectoriesForExport(supabase)
+      for (const t of trajectories) {
+        if (!trajectoryIds.has(t.id)) continue
+        files.push(buildTrajectoryMarkdown(t))
+        exportedTrajectoryIds.push(t.id)
+      }
+    }
+
     if (files.length === 0) {
       return NextResponse.redirect(
         new URL("/export?error=Selected+artifacts+were+not+found.", request.url),
@@ -63,12 +76,13 @@ export async function POST(request: NextRequest) {
     // Log bulk header for the home-page diagnostics count, and the per-artifact
     // stamps the picker reads. Failure here is non-fatal — the user still gets
     // their files; the next picker render just won't badge these as exported.
-    const scope =
-      exportedEntryIds.length > 0 && exportedResponseIds.length > 0
-        ? "all"
-        : exportedEntryIds.length > 0
-          ? "journal"
-          : "reflections"
+    // `all` whenever more than one artifact type is in the download; otherwise
+    // the single type's own scope. Vocabulary is constrained by a CHECK on exports.scope.
+    const scopes: string[] = []
+    if (exportedEntryIds.length > 0) scopes.push("journal")
+    if (exportedResponseIds.length > 0) scopes.push("reflections")
+    if (exportedTrajectoryIds.length > 0) scopes.push("trajectories")
+    const scope = scopes.length === 1 ? scopes[0] : "all"
 
     await Promise.all([
       supabase
@@ -83,6 +97,11 @@ export async function POST(request: NextRequest) {
         ...exportedResponseIds.map((id) => ({
           user_id: user.id,
           artifact_type: "response",
+          artifact_id: id,
+        })),
+        ...exportedTrajectoryIds.map((id) => ({
+          user_id: user.id,
+          artifact_type: "trajectory",
           artifact_id: id,
         })),
       ]),

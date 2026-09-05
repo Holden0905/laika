@@ -6,9 +6,11 @@
  */
 
 import { isoWeekString } from "@/lib/reflections/format"
+import { localDateString, padTrajectoryNumber } from "@/lib/trajectories/format"
 
 const JOURNAL_INDEX = "journal-index"
 const REFLECTION_INDEX = "reflection-index"
+const TRAJECTORY_INDEX = "trajectory-index"
 
 /** Sentence-case long date, e.g. "2026-05-13" → "May 13, 2026". Matches CLAUDE.md spec. */
 function longDate(dateStr: string): string {
@@ -128,6 +130,98 @@ export function buildReflectionMarkdown(r: ReflectionResponseForExport): ExportF
   const paddedPrompt = r.prompt_number.toString().padStart(3, "0")
   return {
     path: `reflections/reflection-${week}-P${paddedPrompt}.md`,
+    content: lines.join("\n"),
+  }
+}
+
+export type TrajectoryLogForExport = {
+  id: string
+  body: string
+  created_at: string
+}
+
+export type TrajectoryDirectiveForExport = {
+  directive_number: number
+  title: string
+  is_complete: boolean
+}
+
+export type TrajectoryForExport = {
+  id: string
+  trajectory_number: number
+  title: string
+  summary: string | null
+  status: string
+  created_at: string
+  last_contact_at: string
+  tags: string[]
+  log: TrajectoryLogForExport[]
+  directives: TrajectoryDirectiveForExport[]
+}
+
+/**
+ * Build a single trajectory .md file: frontmatter, title, summary, the full
+ * log as dated H3 sections, then attached directives as an Obsidian checklist.
+ *
+ * Log order is newest-first, matching the detail page — the vault note reads
+ * the same way the app does.
+ */
+export function buildTrajectoryMarkdown(t: TrajectoryForExport): ExportFile {
+  const created = localDateString(t.created_at)
+
+  const lines: string[] = []
+  lines.push("---")
+  lines.push(`date: ${created}`)
+  lines.push(`type: trajectory`)
+  lines.push(`status: ${t.status}`)
+  if (t.tags.length > 0) {
+    lines.push(`tags:`)
+    for (const tag of t.tags) {
+      lines.push(`  - ${tag}`)
+    }
+  }
+  lines.push("---")
+  lines.push("")
+  lines.push(`# ${singleLine(t.title)}`)
+
+  if (t.summary && t.summary.trim().length > 0) {
+    lines.push("")
+    lines.push(t.summary.trim())
+  }
+
+  lines.push("")
+  lines.push("## Log")
+  lines.push("")
+  if (t.log.length === 0) {
+    lines.push("_No log entries recorded._")
+  } else {
+    t.log.forEach((entry, i) => {
+      lines.push(`### ${localDateString(entry.created_at)}`)
+      lines.push("")
+      lines.push(entry.body.trimEnd())
+      if (i < t.log.length - 1) lines.push("")
+    })
+  }
+
+  lines.push("")
+  lines.push("## Directives")
+  lines.push("")
+  if (t.directives.length === 0) {
+    lines.push("_No directives attached._")
+  } else {
+    for (const d of t.directives) {
+      const box = d.is_complete ? "[x]" : "[ ]"
+      const id = `D-${d.directive_number.toString().padStart(3, "0")}`
+      lines.push(`- ${box} ${id} — ${singleLine(d.title)}`)
+    }
+  }
+
+  lines.push(...bodyFooter(TRAJECTORY_INDEX, t.tags))
+  lines.push("")
+
+  const padded = padTrajectoryNumber(t.trajectory_number)
+  return {
+    path: `trajectories/trajectory-${created}-T${padded}.md`,
     content: lines.join("\n"),
   }
 }

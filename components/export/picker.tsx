@@ -25,6 +25,17 @@ export type PickerEntry = {
   exported_at: string | null
 }
 
+export type PickerTrajectory = {
+  id: string
+  trajectory_number: number
+  title: string
+  summary: string | null
+  status: string
+  log_count: number
+  directive_count: number
+  exported_at: string | null
+}
+
 export type PickerResponse = {
   id: string
   prompt_text: string
@@ -39,6 +50,7 @@ export type PickerResponse = {
 type Props = {
   entries: PickerEntry[]
   responses: PickerResponse[]
+  trajectories: PickerTrajectory[]
 }
 
 function excerpt(body: string, max = 140) {
@@ -54,7 +66,7 @@ function formatExportedDate(iso: string): string {
   return `${m}.${day}.${y}`
 }
 
-export function ExportPicker({ entries, responses }: Props) {
+export function ExportPicker({ entries, responses, trajectories }: Props) {
   // Default: only un-exported items selected. Matches the spec — first thing
   // Brian sees is the new-since-last-export set, ready to download.
   const defaultEntries = useMemo(
@@ -65,13 +77,20 @@ export function ExportPicker({ entries, responses }: Props) {
     () => new Set(responses.filter((r) => !r.exported_at).map((r) => r.id)),
     [responses]
   )
+  const defaultTrajectories = useMemo(
+    () => new Set(trajectories.filter((t) => !t.exported_at).map((t) => t.id)),
+    [trajectories]
+  )
 
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(defaultEntries)
   const [selectedResponses, setSelectedResponses] =
     useState<Set<string>>(defaultResponses)
+  const [selectedTrajectories, setSelectedTrajectories] =
+    useState<Set<string>>(defaultTrajectories)
 
-  const totalSelected = selectedEntries.size + selectedResponses.size
-  const totalAvailable = entries.length + responses.length
+  const totalSelected =
+    selectedEntries.size + selectedResponses.size + selectedTrajectories.size
+  const totalAvailable = entries.length + responses.length + trajectories.length
 
   function toggleEntry(id: string) {
     setSelectedEntries((prev) => {
@@ -89,20 +108,33 @@ export function ExportPicker({ entries, responses }: Props) {
       return next
     })
   }
+  function toggleTrajectory(id: string) {
+    setSelectedTrajectories((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   function selectAll() {
     setSelectedEntries(new Set(entries.map((e) => e.id)))
     setSelectedResponses(new Set(responses.map((r) => r.id)))
+    setSelectedTrajectories(new Set(trajectories.map((t) => t.id)))
   }
   function selectNewOnly() {
     setSelectedEntries(new Set(entries.filter((e) => !e.exported_at).map((e) => e.id)))
     setSelectedResponses(
       new Set(responses.filter((r) => !r.exported_at).map((r) => r.id))
     )
+    setSelectedTrajectories(
+      new Set(trajectories.filter((t) => !t.exported_at).map((t) => t.id))
+    )
   }
   function clearAll() {
     setSelectedEntries(new Set())
     setSelectedResponses(new Set())
+    setSelectedTrajectories(new Set())
   }
 
   // Group reflections by week for readability — schematic frames each cycle.
@@ -145,6 +177,9 @@ export function ExportPicker({ entries, responses }: Props) {
       ))}
       {Array.from(selectedResponses).map((id) => (
         <input key={`r-${id}`} type="hidden" name="responseIds" value={id} />
+      ))}
+      {Array.from(selectedTrajectories).map((id) => (
+        <input key={`t-${id}`} type="hidden" name="trajectoryIds" value={id} />
       ))}
 
       {/* Action bar — sticky on scroll so shortcuts and submit stay reachable. */}
@@ -246,7 +281,88 @@ export function ExportPicker({ entries, responses }: Props) {
           </div>
         )}
       </section>
+
+      {/* Trajectory section */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <SectionHeader
+            label={`Trajectories — ${trajectories.length} on file`}
+          />
+          <span className="ml-3 shrink-0 text-[9px] uppercase tracking-[0.14em] text-amber-dim">
+            {selectedTrajectories.size} selected
+          </span>
+        </div>
+        {trajectories.length === 0 ? (
+          <EmptyState>No trajectories seeded yet.</EmptyState>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {trajectories.map((t) => (
+              <TrajectoryPickerRow
+                key={t.id}
+                trajectory={t}
+                checked={selectedTrajectories.has(t.id)}
+                onToggle={() => toggleTrajectory(t.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
     </form>
+  )
+}
+
+function TrajectoryPickerRow({
+  trajectory,
+  checked,
+  onToggle,
+}: {
+  trajectory: PickerTrajectory
+  checked: boolean
+  onToggle: () => void
+}) {
+  const padded = trajectory.trajectory_number.toString().padStart(3, "0")
+  return (
+    <li>
+      <label
+        className="group relative flex cursor-pointer items-start gap-3 border border-line-dim px-4 py-3 transition-colors hover:border-line-mid"
+        style={checked ? { borderColor: "rgba(58,189,111,0.45)" } : undefined}
+      >
+        <CornerMarks />
+        <input
+          type="checkbox"
+          className="sr-only"
+          checked={checked}
+          onChange={onToggle}
+        />
+        <span className="mt-[2px]">
+          <CheckIndicator checked={checked} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-[9px] uppercase tracking-[0.12em] text-amber-dim">
+                T-{padded}
+              </span>
+              <span className="text-[9px] tracking-[0.08em] text-amber-dim">
+                {trajectory.status} · {trajectory.log_count} LOG ·{" "}
+                {trajectory.directive_count} DIR
+              </span>
+            </div>
+            {trajectory.exported_at ? (
+              <ExportedBadge exportedAt={trajectory.exported_at} />
+            ) : null}
+          </div>
+          <h3 className="mt-1 text-[13px] font-semibold leading-snug tracking-[0.04em] text-line">
+            {trajectory.title}
+          </h3>
+          {trajectory.summary ? (
+            <p className="mt-1 text-[10.5px] leading-relaxed tracking-[0.02em] text-line-mid">
+              {excerpt(trajectory.summary)}
+            </p>
+          ) : null}
+        </div>
+      </label>
+    </li>
   )
 }
 

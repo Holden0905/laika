@@ -10,6 +10,7 @@ const ITEMS: Array<{ name: string; href: string; live: boolean }> = [
   { name: "Prompts", href: "/prompts", live: true },
   { name: "Satellites", href: "/satellites", live: true },
   { name: "Directives", href: "/directives", live: true },
+  { name: "Trajectories", href: "/trajectories", live: true },
   { name: "Export", href: "/export", live: true },
 ]
 

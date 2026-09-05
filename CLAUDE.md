@@ -134,6 +134,10 @@ laika/
 │   │   └── new/                # New weekly reflection (prompt picker)
 │   ├── prompts/                # Prompt library management
 │   │   └── page.tsx            # Add / edit / retire prompts
+│   ├── trajectories/           # Long-horizon seeds and ambitions
+│   │   ├── page.tsx            # List — active / dormant / archive
+│   │   ├── [id]/               # Detail — log, attached directives, copy context
+│   │   └── actions.ts          # Server actions
 │   ├── export/                 # Markdown export
 │   └── api/                    # API routes
 │       └── export/             # Markdown file generation endpoint
@@ -287,6 +291,9 @@ Single-user app currently. No admin/viewer distinction needed yet. If this becom
 | `tags` | Obsidian wiki-link compatible tags | `user_id`, `name` (text, unique per user). Rendered as `[[tag-name]]` in markdown export. |
 | `entry_tags` | Junction: entries ↔ tags | `entry_id`, `tag_id` |
 | `response_tags` | Junction: reflection_responses ↔ tags | `response_id`, `tag_id` |
+| `trajectories` | Long-horizon seeds and ambitions | `user_id`, `title`, `summary` (optional), `status` (DORMANT/ACTIVE/REACHED/ABANDONED), `last_contact_at`, `is_active`. Never "completed" — it accretes. |
+| `trajectory_log` | Append-only dated entries on a trajectory | `user_id`, `trajectory_id`, `body`, `created_at`. No UPDATE policy by design. |
+| `trajectory_tags` | Junction: trajectories ↔ tags | `trajectory_id`, `tag_id`, `user_id` |
 | `entry_photos` | Photo attachments on entries | `entry_id`, `user_id`, `storage_path` (text, references Supabase Storage), `caption` (optional) |
 
 **Schema gotchas:**
@@ -297,6 +304,11 @@ Single-user app currently. No admin/viewer distinction needed yet. If this becom
 - Tag names must be normalized — lowercase, trimmed, spaces replaced with hyphens — for consistent Obsidian wiki-link rendering.
 - `prompts.is_active` controls whether a prompt appears in the picker. Retired prompts stay in the DB so historical reflections still reference them.
 - Per-week prompt selection is materialized in `reflection_prompts`. Progress on a reflection = `count(reflection_responses where reflection_id = X) / count(reflection_prompts where reflection_id = X)`. A prompt being retired mid-week does NOT remove it from already-created reflections.
+- `trajectories.last_contact_at` is written **only** by the `trajectory_log_touch_contact` trigger (and the row default at creation). Never set it from application code — the trigger uses `GREATEST` so a backdated log entry can't drag it backwards.
+- `trajectory_log` has no UPDATE policy. Append-only is enforced at the RLS layer, not just the UI.
+- `T-###` numbering is creation order across **all** trajectories, archived included, because the number lands in export filenames and must stay stable. `D-###` for attached directives follows the directives manifest (active tasks, creation order).
+- `tasks.trajectory_id` is nullable with no cascade — soft-deleting a trajectory must never remove its directives.
+- `exports_log.artifact_type` and `exports.scope` are CHECK-constrained vocabularies. Adding a new exportable artifact type means widening both.
 - `entry_photos.storage_path` must follow the convention `{user_id}/{entry_id}/{filename}` — the first segment drives Storage RLS, the second groups by entry. A DB `CHECK` enforces the prefix. The matching bucket is `entry-photos` (private, 10MB cap, image MIME types only). Photos are served via signed URLs, never public.
 
 ---
@@ -405,7 +417,39 @@ tags:
 
 **Reflection date:** Uses the reflection's `week_start` (the Monday) — stable, no timezone drift from response timestamps.
 
-**Bundling:** Single-file exports return raw `.md`; multi-file exports return a `.zip` with `journal/` and `reflections/` subdirectories.
+**Trajectory:**
+```markdown
+---
+date: 2026-03-11
+type: trajectory
+status: ACTIVE
+tags:
+  - writing
+---
+
+# Finish the long book
+
+{summary}
+
+## Log
+
+### 2026-09-01
+
+{log entry body}
+
+## Directives
+
+- [ ] D-004 — Draft chapter 4
+- [x] D-002 — Reread the Minsky notes
+
+[[trajectory-index]]
+
+[[writing]]
+```
+
+Trajectory `date` is the seed date (`created_at`); the log runs newest-first, matching the detail page. The detail page's COPY CONTEXT button uses the same builder, so clipboard and file are byte-identical.
+
+**Bundling:** Single-file exports return raw `.md`; multi-file exports return a `.zip` with `journal/`, `reflections/`, and `trajectories/` subdirectories.
 
 ---
 

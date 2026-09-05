@@ -13,7 +13,9 @@ import {
   ExportPicker,
   type PickerEntry,
   type PickerResponse,
+  type PickerTrajectory,
 } from "@/components/export/picker"
+import { fetchTrajectoryBundle } from "@/lib/trajectories/queries"
 
 type SearchParams = Promise<{ error?: string }>
 
@@ -25,10 +27,11 @@ export default async function ExportPage({
   const { error } = await searchParams
   const supabase = await createClient()
 
-  const [entries, responses, exported] = await Promise.all([
+  const [entries, responses, exported, trajectoryBundle] = await Promise.all([
     fetchJournalEntriesForExport(supabase),
     fetchReflectionResponsesForExport(supabase),
     fetchExportedArtifacts(supabase),
+    fetchTrajectoryBundle(supabase),
   ])
 
   // Sort newest-first for the picker. Underlying query returns ascending so
@@ -57,12 +60,25 @@ export default async function ExportPage({
     exported_at: exported.responses.get(r.response_id) ?? null,
   }))
 
+  // Creation order in the list, same as the T-### numbering.
+  const pickerTrajectories: PickerTrajectory[] = trajectoryBundle.trajectories.map((t) => ({
+    id: t.id,
+    trajectory_number: trajectoryBundle.numberById.get(t.id) ?? 0,
+    title: t.title,
+    summary: t.summary,
+    status: t.status,
+    log_count: (trajectoryBundle.logByTrajectory.get(t.id) ?? []).length,
+    directive_count: (trajectoryBundle.directivesByTrajectory.get(t.id) ?? []).length,
+    exported_at: exported.trajectories.get(t.id) ?? null,
+  }))
+
   const unexportedCount =
     pickerEntries.filter((e) => !e.exported_at).length +
-    pickerResponses.filter((r) => !r.exported_at).length
-  const exportedCount =
-    (pickerEntries.length - pickerEntries.filter((e) => !e.exported_at).length) +
-    (pickerResponses.length - pickerResponses.filter((r) => !r.exported_at).length)
+    pickerResponses.filter((r) => !r.exported_at).length +
+    pickerTrajectories.filter((t) => !t.exported_at).length
+  const totalCount =
+    pickerEntries.length + pickerResponses.length + pickerTrajectories.length
+  const exportedCount = totalCount - unexportedCount
 
   return (
     <main className="mx-auto w-full max-w-[940px] px-4 py-8 sm:px-6 sm:py-10">
@@ -72,12 +88,13 @@ export default async function ExportPage({
           ARCHIVE EXTRACTION
         </h1>
         <p className="mt-3 text-[10.5px] leading-relaxed tracking-[0.04em] text-line-mid">
-          Select the transmissions and reflection responses to extract. Each artifact
-          downloads as an Obsidian-compatible <code className="text-amber">.md</code> file
-          with frontmatter and wiki-link tags; multi-file extractions arrive as a{" "}
-          <code className="text-amber">.zip</code> with{" "}
-          <code className="text-amber">journal/</code> and{" "}
-          <code className="text-amber">reflections/</code> subdirectories.
+          Select the transmissions, reflection responses, and trajectories to extract. Each
+          artifact downloads as an Obsidian-compatible{" "}
+          <code className="text-amber">.md</code> file with frontmatter and wiki-link tags;
+          multi-file extractions arrive as a <code className="text-amber">.zip</code> with{" "}
+          <code className="text-amber">journal/</code>,{" "}
+          <code className="text-amber">reflections/</code>, and{" "}
+          <code className="text-amber">trajectories/</code> subdirectories.
         </p>
         <div className="mt-4">
           <Ruler count={40} />
@@ -104,14 +121,14 @@ export default async function ExportPage({
       <div className="mb-10 grid gap-3 sm:grid-cols-3">
         <DiagnosticCell label="New / Unexported" value={unexportedCount} accent="var(--phosphor)" />
         <DiagnosticCell label="Previously Extracted" value={exportedCount} accent="var(--amber)" />
-        <DiagnosticCell
-          label="Total On File"
-          value={pickerEntries.length + pickerResponses.length}
-          accent="var(--line)"
-        />
+        <DiagnosticCell label="Total On File" value={totalCount} accent="var(--line)" />
       </div>
 
-      <ExportPicker entries={pickerEntries} responses={pickerResponses} />
+      <ExportPicker
+        entries={pickerEntries}
+        responses={pickerResponses}
+        trajectories={pickerTrajectories}
+      />
 
       <div className="mt-12">
         <SectionHeader label="Format Specification" className="mb-4" />
@@ -120,8 +137,9 @@ export default async function ExportPage({
           <ul className="flex flex-col gap-2">
             <SpecRow label="File Layout">
               One markdown file per artifact. Zip contains{" "}
-              <code className="text-amber">journal/</code> and{" "}
-              <code className="text-amber">reflections/</code> subdirectories.
+              <code className="text-amber">journal/</code>,{" "}
+              <code className="text-amber">reflections/</code>, and{" "}
+              <code className="text-amber">trajectories/</code> subdirectories.
             </SpecRow>
             <SpecRow label="Frontmatter">
               YAML — <code className="text-amber">date</code>,{" "}
@@ -129,12 +147,20 @@ export default async function ExportPage({
               <code className="text-amber">mood</code> (when set),{" "}
               <code className="text-amber">tags</code> as plain names (when set). Reflections
               also include <code className="text-amber">week</code> and{" "}
-              <code className="text-amber">prompt</code>.
+              <code className="text-amber">prompt</code>; trajectories include{" "}
+              <code className="text-amber">status</code>.
             </SpecRow>
             <SpecRow label="Index + Wiki-Links">
-              Every file has <code className="text-amber">[[journal-index]]</code> or{" "}
-              <code className="text-amber">[[reflection-index]]</code> in the body footer, plus
+              Every file has <code className="text-amber">[[journal-index]]</code>,{" "}
+              <code className="text-amber">[[reflection-index]]</code>, or{" "}
+              <code className="text-amber">[[trajectory-index]]</code> in the body footer, plus
               tags as wiki-links.
+            </SpecRow>
+            <SpecRow label="Trajectory Body">
+              H1 title, summary, then{" "}
+              <code className="text-amber">## Log</code> with each entry as a dated{" "}
+              <code className="text-amber">### YYYY-MM-DD</code> section (newest first), then{" "}
+              <code className="text-amber">## Directives</code> as a checklist.
             </SpecRow>
             <SpecRow label="Export Log">
               Extracting an artifact stamps it in{" "}

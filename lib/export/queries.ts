@@ -84,10 +84,12 @@ export async function fetchJournalEntriesForExport(
 export async function fetchExportedArtifacts(supabase: SupabaseClient): Promise<{
   entries: Map<string, string>
   responses: Map<string, string>
+  trajectories: Map<string, string>
 }> {
   const result = {
     entries: new Map<string, string>(),
     responses: new Map<string, string>(),
+    trajectories: new Map<string, string>(),
   }
 
   const { data, error } = await supabase
@@ -97,9 +99,18 @@ export async function fetchExportedArtifacts(supabase: SupabaseClient): Promise<
 
   if (error || !data) return result
 
-  type Row = { artifact_type: "entry" | "response"; artifact_id: string; exported_at: string }
+  type Row = {
+    artifact_type: "entry" | "response" | "trajectory"
+    artifact_id: string
+    exported_at: string
+  }
   for (const row of data as Row[]) {
-    const target = row.artifact_type === "entry" ? result.entries : result.responses
+    const target =
+      row.artifact_type === "entry"
+        ? result.entries
+        : row.artifact_type === "response"
+          ? result.responses
+          : result.trajectories
     // First write wins because we ordered DESC — that's the most recent timestamp.
     if (!target.has(row.artifact_id)) target.set(row.artifact_id, row.exported_at)
   }

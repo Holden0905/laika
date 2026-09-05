@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { name: "Prompts", href: "/prompts" },
   { name: "Satellites", href: "/satellites" },
   { name: "Directives", href: "/directives" },
+  { name: "Trajectories", href: "/trajectories" },
   { name: "Export", href: "/export" },
 ]
 
