@@ -65,7 +65,11 @@ Use the **Tailscale** address (`100.106.137.96`) everywhere — it resolves from
 
 ### Deploy procedure
 
-Edit on the workstation, commit, push. Then on Defiant:
+Edit on the workstation, commit, push. Then on Defiant, run `./deploy.sh` — it
+performs the steps below, resolves the anon key without it ever being hardcoded,
+keeps the previous image as `laika:previous` for rollback, and health-checks the
+container before reporting success. `--dry-run` prints the commands without
+running them. The manual equivalent:
 
 ```bash
 cd /volume1/docker/laika
