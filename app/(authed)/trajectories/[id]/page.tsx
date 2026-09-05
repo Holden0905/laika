@@ -15,6 +15,7 @@ import { AttachDirectiveForm } from "@/components/trajectories/attach-directive-
 import { CopyContextButton } from "@/components/trajectories/copy-context-button"
 import { DictationButton } from "@/components/ui/dictation-button"
 import { DangerActionButton } from "@/components/trajectories/danger-action-button"
+import { VaporizeButton } from "@/components/trajectories/vaporize-button"
 import { updateTrajectoryDetails } from "@/app/(authed)/trajectories/actions"
 import { buildTrajectoryMarkdown } from "@/lib/export/markdown"
 import { fetchTrajectoryBundle, toExportShape } from "@/lib/trajectories/queries"
@@ -307,13 +308,23 @@ export default async function TrajectoryDetailPage({
             <span className="text-amber">Abandon</span> marks the vector ABANDONED — it stays
             readable and exportable in the archive.{" "}
             <span className="text-amber">Archive</span> soft-deletes it: the row and its log
-            are preserved but it drops off every list.
+            are preserved but it drops off every list.{" "}
+            <span className="text-red">Vaporize</span> is the only one that destroys anything —
+            the trajectory and its entire log are erased from the database, permanently.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             {trajectory.status === "ABANDONED" ? null : (
               <DangerActionButton trajectoryId={trajectory.id} variant="abandon" />
             )}
             <DangerActionButton trajectoryId={trajectory.id} variant="archive" />
+          </div>
+          <div className="mt-4 border-t border-line-ghost pt-4">
+            <VaporizeButton
+              trajectoryId={trajectory.id}
+              title={trajectory.title}
+              logCount={log.length}
+              directiveCount={directives.length}
+            />
           </div>
         </div>
       </section>

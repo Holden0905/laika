@@ -134,7 +134,7 @@ export default async function TrajectoriesPage({
           </summary>
           <div className="mt-4 flex flex-col gap-2">
             {archived.map((t) => (
-              <TrajectoryRow key={t.id} trajectory={t} />
+              <TrajectoryRow key={t.id} trajectory={t} vaporizable />
             ))}
           </div>
         </details>

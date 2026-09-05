@@ -224,3 +224,62 @@ export async function archiveTrajectory(formData: FormData) {
   revalidateTrajectory(id)
   redirect("/trajectories")
 }
+
+/**
+ * VAPORIZE — a true hard delete, the counterpart to archive's soft delete.
+ * Irreversible: the row and its whole log are gone from Rio.
+ *
+ * Order matters. Business FKs deliberately have no ON DELETE CASCADE
+ * (CLAUDE.md), so children are cleared explicitly, and attached directives are
+ * detached rather than destroyed — a task can outlive the vector that spawned it.
+ *
+ * The typed title is re-checked here, not just in the UI: a client that skips
+ * the confirmation must not be able to delete anything.
+ */
+export async function vaporizeTrajectory(formData: FormData) {
+  const { supabase } = await requireUser()
+  const id = String(formData.get("trajectory_id") ?? "")
+  const typed = String(formData.get("confirm_title") ?? "").trim()
+  if (!id) listError("Missing trajectory id.")
+
+  const { data: trajectory, error: fetchErr } = await supabase
+    .from("trajectories")
+    .select("id, title")
+    .eq("id", id)
+    .maybeSingle()
+
+  if (fetchErr) detailError(id, fetchErr.message)
+  if (!trajectory) listError("Trajectory not found.")
+  if (typed !== trajectory.title.trim()) {
+    detailError(id, "Typed title did not match. Nothing was deleted.")
+  }
+
+  const tags = await supabase.from("trajectory_tags").delete().eq("trajectory_id", id)
+  if (tags.error) detailError(id, `Could not clear tag links: ${tags.error.message}`)
+
+  const log = await supabase.from("trajectory_log").delete().eq("trajectory_id", id)
+  if (log.error) detailError(id, `Could not clear log entries: ${log.error.message}`)
+
+  // Directives survive — only the link is cut.
+  const tasks = await supabase
+    .from("tasks")
+    .update({ trajectory_id: null })
+    .eq("trajectory_id", id)
+  if (tasks.error) detailError(id, `Could not detach directives: ${tasks.error.message}`)
+
+  // Export stamps would otherwise point at an id that no longer exists.
+  await supabase
+    .from("exports_log")
+    .delete()
+    .eq("artifact_type", "trajectory")
+    .eq("artifact_id", id)
+
+  const removed = await supabase.from("trajectories").delete().eq("id", id)
+  if (removed.error) detailError(id, removed.error.message)
+
+  revalidatePath("/trajectories")
+  revalidatePath("/directives")
+  revalidatePath("/export")
+  revalidatePath("/")
+  redirect("/trajectories")
+}
