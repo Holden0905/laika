@@ -99,8 +99,11 @@ export function detectDictation(): DictationAvailability {
 export function describeSpeechError(code: string): string {
   switch (code) {
     case "not-allowed":
-    case "service-not-allowed":
       return "Microphone permission denied. Allow mic access for this site, then try again."
+    case "service-not-allowed":
+      // NOT the same as not-allowed: the browser's speech backend refused the
+      // request. Usually a Chrome speech-service problem, not mic permission.
+      return "The browser's speech service refused the request. This is usually not a microphone problem — see the console for diagnostics."
     case "audio-capture":
       return "No microphone found."
     case "network":
@@ -185,4 +188,96 @@ export function insertAtCursor(el: DictationTarget, text: string) {
 
   setNativeValue(el, next.value)
   el.setSelectionRange(next.caret, next.caret)
+}
+
+
+/**
+ * Everything worth knowing when dictation fails, gathered in one place.
+ *
+ * The decisive part is the getUserMedia probe: if the mic opens, permission is
+ * fine and the failure belongs to the browser's speech service, whatever the
+ * SpeechRecognition error code claimed. Every field is individually guarded so
+ * one unsupported API cannot blank the whole report.
+ */
+export type DictationDiagnostics = {
+  origin: string
+  isSecureContext: boolean
+  userAgent: string
+  language: string
+  hasStandardApi: boolean
+  hasWebkitApi: boolean
+  userActivation: { isActive: boolean; hasBeenActive: boolean } | "unsupported"
+  micPermission: string
+  getUserMedia:
+    | { ok: true; trackLabel: string }
+    | { ok: false; name: string; message: string }
+    | "unsupported"
+  audioInputDevices: number | "unavailable"
+}
+
+export function readUserActivation(): { isActive: boolean; hasBeenActive: boolean } | "unsupported" {
+  const nav = navigator as Navigator & {
+    userActivation?: { isActive: boolean; hasBeenActive: boolean }
+  }
+  if (!nav.userActivation) return "unsupported"
+  return {
+    isActive: nav.userActivation.isActive,
+    hasBeenActive: nav.userActivation.hasBeenActive,
+  }
+}
+
+export async function collectDictationDiagnostics(): Promise<DictationDiagnostics> {
+  const w = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }
+
+  let micPermission = "unsupported"
+  try {
+    if (navigator.permissions?.query) {
+      const status = await navigator.permissions.query({
+        name: "microphone" as PermissionName,
+      })
+      micPermission = status.state
+    }
+  } catch (err) {
+    micPermission = `query-failed: ${err instanceof Error ? err.name : String(err)}`
+  }
+
+  let getUserMediaResult: DictationDiagnostics["getUserMedia"] = "unsupported"
+  try {
+    if (navigator.mediaDevices?.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const label = stream.getAudioTracks()[0]?.label ?? "(unlabelled track)"
+      // Release immediately — this is a probe, not a capture session.
+      stream.getTracks().forEach((t) => t.stop())
+      getUserMediaResult = { ok: true, trackLabel: label }
+    }
+  } catch (err) {
+    getUserMediaResult = {
+      ok: false,
+      name: err instanceof Error ? err.name : "UnknownError",
+      message: err instanceof Error ? err.message : String(err),
+    }
+  }
+
+  let audioInputDevices: number | "unavailable" = "unavailable"
+  try {
+    if (navigator.mediaDevices?.enumerateDevices) {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      audioInputDevices = devices.filter((d) => d.kind === "audioinput").length
+    }
+  } catch {
+    audioInputDevices = "unavailable"
+  }
+
+  return {
+    origin: window.location.origin,
+    isSecureContext: window.isSecureContext,
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    hasStandardApi: typeof w.SpeechRecognition !== "undefined",
+    hasWebkitApi: typeof w.webkitSpeechRecognition !== "undefined",
+    userActivation: readUserActivation(),
+    micPermission,
+    getUserMedia: getUserMediaResult,
+    audioInputDevices,
+  }
 }

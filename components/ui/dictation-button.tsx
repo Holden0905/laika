@@ -4,14 +4,18 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { CornerMarks } from "@/components/ui/schematic"
 import {
   type DictationAvailability,
+  collectDictationDiagnostics,
   describeSpeechError,
   detectDictation,
   getSpeechRecognitionCtor,
   insertAtCursor,
   isFatalSpeechError,
+  readUserActivation,
   type DictationTarget,
   type SpeechRecognitionLike,
 } from "@/lib/speech/dictation"
+
+const LOG = "[laika:dictation]"
 
 type Status = "checking" | "idle" | "listening" | "error" | "blocked"
 
@@ -140,17 +144,46 @@ export function DictationButton({
 
     recognition.onerror = (event) => {
       const code = event.error
+      const raw = event as unknown as Record<string, unknown>
+      console.warn(`${LOG} SpeechRecognitionErrorEvent`, {
+        error: code,
+        message: raw.message,
+        type: raw.type,
+        timeStamp: raw.timeStamp,
+        isTrusted: raw.isTrusted,
+        userActivation: readUserActivation(),
+        rawEvent: event,
+      })
+
       // no-speech fires constantly during pauses; aborted is our own stop().
       if (code === "no-speech" || code === "aborted") return
       setInterim("")
-      if (isFatalSpeechError(code)) {
-        stoppedByUserRef.current = true
-        setStatus("blocked")
-        setMessage(describeSpeechError(code))
-      } else {
-        setStatus("error")
-        setMessage(describeSpeechError(code))
-      }
+      // A fatal code stops the auto-restart loop, but the button stays tappable:
+      // permission can be granted, or a flaky speech service can come back, and
+      // neither should need a page reload. "blocked" is reserved for the
+      // environment verdict (no API / insecure context), which cannot change.
+      if (isFatalSpeechError(code)) stoppedByUserRef.current = true
+      setStatus("error")
+      setMessage(describeSpeechError(code))
+
+      // Decisive test: try to open the mic directly. Chrome fires the speech
+      // error within milliseconds of the tap, so the gesture is normally still
+      // live and this can still raise the permission prompt if one is owed.
+      void collectDictationDiagnostics().then((diagnostics) => {
+        console.warn(`${LOG} diagnostics after "${code}"`, diagnostics)
+        const probe = diagnostics.getUserMedia
+        if (probe !== "unsupported" && probe.ok) {
+          // The microphone opened. Whatever the error code said, this is not a
+          // permission problem — it is the browser's speech backend.
+          setMessage(
+            `Microphone opened fine (${diagnostics.micPermission}) — so this is not a permission problem. The browser's speech service returned "${code}". See console.`
+          )
+        } else if (probe !== "unsupported") {
+          setMessage(
+            `Microphone blocked: ${probe.name}. Speech service returned "${code}". See console.`
+          )
+        }
+      })
     }
 
     recognition.onend = () => {
@@ -184,11 +217,23 @@ export function DictationButton({
     recognitionRef.current = recognition
 
     try {
+      // start() is called synchronously in the click handler — nothing is
+      // awaited before this line — so the user gesture is still live. Logged
+      // so that can be confirmed from the console rather than assumed.
+      console.info(`${LOG} start()`, {
+        lang: recognition.lang,
+        continuous: recognition.continuous,
+        interimResults: recognition.interimResults,
+        userActivation: readUserActivation(),
+        isSecureContext: window.isSecureContext,
+        origin: window.location.origin,
+      })
       recognition.start()
       setStatus("listening")
       setMessage(null)
       el.focus({ preventScroll: true })
-    } catch {
+    } catch (err) {
+      console.error(`${LOG} start() threw`, err)
       recognitionRef.current = null
       setStatus("error")
       setMessage("Could not start dictation. Tap to try again.")
