@@ -46,12 +46,14 @@ Laika no longer runs on cloud Supabase or Vercel. Cloud Supabase's free tier aut
 
 There is one environment — production, on the home server. Development is local against the same Rio instance.
 
-| Service | LAN | Tailscale |
-|---|---|---|
-| Laika app | `http://192.168.4.184:3000` | `http://100.106.137.96:3000` |
-| Rio API + Studio | `http://192.168.4.184:8000` | `http://100.106.137.96:8000` |
+Both services are fronted by **Tailscale TLS** (`tailscale serve`), on the tailnet's MagicDNS name with a real certificate.
 
-Use the **Tailscale** address (`100.106.137.96`) everywhere — it resolves from home and away. The LAN IP only works at home. Brian's phone runs the PWA against the Tailscale address, so it works on cellular.
+| Service | URL |
+|---|---|
+| Laika app | `https://defiant.tail818adc.ts.net:9444` |
+| Rio API + Studio | `https://defiant.tail818adc.ts.net:9443` |
+
+**Use the https URLs everywhere.** They resolve from home and away, and the secure context they provide is what makes browser features work — photo rendering and voice dictation both depend on it (see Infrastructure Gotchas). The container still listens on plain `3000` behind the proxy, which is what the deploy health check hits locally; the older raw-IP addresses (`192.168.4.184`, `100.106.137.96`) are not the app's origin any more and must not be used for builds or auth redirects, since both are origin-specific.
 
 | Path / host | Purpose |
 |---|---|
@@ -75,7 +77,7 @@ running them. The manual equivalent:
 cd /volume1/docker/laika
 sudo git pull
 sudo docker build -t laika \
-  --build-arg NEXT_PUBLIC_SUPABASE_URL=http://100.106.137.96:8000 \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://defiant.tail818adc.ts.net:9443 \
   --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<key> .
 sudo docker stop laika && sudo docker rm laika
 sudo docker run -d --name laika --restart unless-stopped -p 3000:3000 laika
@@ -464,7 +466,7 @@ The app needs exactly two variables. Both are public, and both bake in at build 
 
 | Variable | Description | Public? |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Rio's API URL — `http://100.106.137.96:8000` | Yes |
+| `NEXT_PUBLIC_SUPABASE_URL` | Rio's API URL — `https://defiant.tail818adc.ts.net:9443` | Yes |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Rio's anon key | Yes |
 
 Local dev reads these from `.env.local` (untracked). The container gets them as `--build-arg`.
@@ -505,19 +507,18 @@ Nothing auto-deploys. After pushing to `main`, the change is live only once the 
 
 **`NEXT_PUBLIC_*` bakes in at build time.** These are not read at container start. The Dockerfile takes them as `--build-arg` and re-declares them with `ARG`/`ENV` before `npm run build`. Changing the Supabase URL or key therefore requires **rebuilding the image**, not just restarting the container.
 
-**`next.config.ts` hardcodes `protocol: "https"`** for the Supabase image remote patterns, but Rio is served over plain `http`. Photo uploads and entry images may not render, and this hasn't been tested since the migration. Before touching image features, either allow `http` for the Rio host in `next.config.ts` or give Rio TLS (`tailscale serve` can issue a cert).
+**Image remote patterns follow the Supabase URL.** `next.config.ts` derives the protocol, hostname **and port** from `NEXT_PUBLIC_SUPABASE_URL` rather than hardcoding them, so signed photo URLs resolve for whatever origin the image was built against. This used to be a hardcoded `https` against an http Rio, which broke photo rendering; now that Rio is behind Tailscale TLS on a non-default port, both the scheme and the `:9443` port have to come from the env var. Rebuild after changing the URL — the pattern is baked in at build time like every other `NEXT_PUBLIC_*` value.
 
-**Voice dictation needs a secure context, which this deployment does not have.**
+**Voice dictation needs a secure context — Tailscale TLS now provides it.**
 Browsers gate the microphone behind a secure context, so the Web Speech API only
-runs on `https://` or `http://localhost`. Laika is served over plain http on a
-private IP, so `SpeechRecognition` fails with `not-allowed` before it starts —
-the mic buttons detect this via `window.isSecureContext` and render a red
-UNAVAILABLE state explaining why, rather than looking broken. Dictation works in
-local dev (localhost is a secure context) and will work everywhere once Rio has
-TLS. Chrome can be whitelisted per-browser via
-`chrome://flags/#unsafely-treat-insecure-origin-as-secure`; **iOS Safari has no
-such escape hatch**, so the phone needs real TLS (`tailscale serve`), which also
-fixes the `next.config.ts` image-protocol issue above.
+runs on `https://` or `http://localhost`. That is satisfied at
+`https://defiant.tail818adc.ts.net:9444`, including on iOS Safari, which has no
+flag-based workaround for insecure origins. The mic buttons still check
+`window.isSecureContext` and render a red UNAVAILABLE state naming the reason, so
+serving the app over plain http again would explain itself rather than look
+broken. On failure they log the raw `SpeechRecognitionErrorEvent` and a
+`getUserMedia` probe to the console — if the mic opens, the fault is the
+browser's speech service, not permissions.
 
 **Node 20+ required.** The repo is on Next 16.2.6, which will not build on Node 18. The container uses `node:20-alpine`; check the version on any new dev machine.
 

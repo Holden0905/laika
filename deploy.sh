@@ -16,8 +16,9 @@
 #   3. .env.local    next to this script  (gitignored; what dev machines use)
 #   4. ANON_KEY in Rio's own .env — the canonical source on Defiant
 #
-# The Supabase URL follows the same order and defaults to the Tailscale address,
-# which resolves from home and away. A LAN-IP build works only at home.
+# The Supabase URL follows the same order and defaults to Rio's Tailscale TLS
+# address. Build against the https origin: the secure context is what makes photo
+# rendering and voice dictation work, and auth redirects are origin-specific.
 #
 # Rio's SERVICE role key must never be used here: it bypasses all RLS, and a
 # build arg ends up in the client bundle.
@@ -28,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ─── Config — override any of these from the environment ────────────────────
 APP_DIR="${APP_DIR:-$SCRIPT_DIR}"
-DEFAULT_SUPABASE_URL="http://100.106.137.96:8000"   # Tailscale — resolves from home and away
+DEFAULT_SUPABASE_URL="https://defiant.tail818adc.ts.net:9443"   # Rio behind Tailscale TLS
 ENV_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-}"    # an explicit env var always wins
 RIO_ENV="${RIO_ENV:-/volume1/docker/supabase/supabase/docker/.env}"
 IMAGE="${IMAGE:-laika}"
@@ -184,5 +185,6 @@ done
 
 say "Deployed"
 info "$($SUDO docker ps --filter "name=^${CONTAINER}$" --format '{{.Names}}  {{.Status}}  {{.Ports}}')"
-info "LAN        http://192.168.4.184:$PORT"
-info "Tailscale  http://100.106.137.96:$PORT"
+info "App        https://defiant.tail818adc.ts.net:9444"
+info "Rio        $SUPABASE_URL"
+info "container  listening on :$PORT behind the Tailscale TLS proxy"
