@@ -176,7 +176,7 @@ export function DictationButton({
           // The microphone opened. Whatever the error code said, this is not a
           // permission problem — it is the browser's speech backend.
           setMessage(
-            `Microphone opened fine (${diagnostics.micPermission}) — so this is not a permission problem. The browser's speech service returned "${code}". See console.`
+            `Microphone opened fine (${diagnostics.micPermission}) — not a permission problem. Check the mic isn't muted in hardware or the OS. Speech service returned "${code}"; see console.`
           )
         } else if (probe !== "unsupported") {
           setMessage(
@@ -217,17 +217,8 @@ export function DictationButton({
     recognitionRef.current = recognition
 
     try {
-      // start() is called synchronously in the click handler — nothing is
-      // awaited before this line — so the user gesture is still live. Logged
-      // so that can be confirmed from the console rather than assumed.
-      console.info(`${LOG} start()`, {
-        lang: recognition.lang,
-        continuous: recognition.continuous,
-        interimResults: recognition.interimResults,
-        userActivation: readUserActivation(),
-        isSecureContext: window.isSecureContext,
-        origin: window.location.origin,
-      })
+      // Called synchronously in the click handler — nothing is awaited before
+      // this line — so the user gesture is still live when start() runs.
       recognition.start()
       setStatus("listening")
       setMessage(null)
