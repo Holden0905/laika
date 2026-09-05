@@ -10,7 +10,8 @@ This file gives Claude Code context about the Laika project. Read it fully befor
 2. **GRANT statements after every table creation.** Run the standard GRANT block immediately after creating any table — without these, RLS policies are never evaluated and you get empty `{}` error objects.
 3. **Journal data is personal — treat it with care.** Never seed, fabricate, or generate placeholder journal entries. Test with clearly labeled test data that Brian can delete.
 4. **Follow the design system exactly.** Laika has a specific visual identity documented in this file. Do not deviate from the color palette, typography, or component patterns. Reference `design/reference/laika-home-v3.jsx` for the canonical implementation.
-5. **When uncertain, try to fix it. If you can't, flag it and move on.** This is a low-risk personal project.
+5. **Laika shares Rio's Postgres with Brozoflix. Never touch the `brozoflix` schema.** Laika's tables live in `public`; Brozoflix has its own `brozoflix` schema in the same database. Every migration, query, and `GRANT` you write is scoped to `public` — no reads, no writes, no DDL against `brozoflix`.
+6. **When uncertain, try to fix it. If you can't, flag it and move on.** This is a low-risk personal project.
 
 ---
 
@@ -30,24 +31,72 @@ This is a personal side project. Low risk. Brian is the only user.
 |---|---|---|
 | Framework | Next.js (App Router, TypeScript) | PES baseline |
 | Styling | Tailwind CSS v4, shadcn/ui | Custom theme — see Design System below |
-| Backend | Supabase (PostgreSQL, Auth, RLS, Storage) | Storage used for photo attachments |
-| Hosting | Vercel | Auto-deploys on push to main |
-| Editor | Cursor IDE / Claude Code | Full autonomy — MCP access to Supabase |
+| Backend | Self-hosted Supabase — "Rio" (PostgreSQL 17, GoTrue, PostgREST, Kong, Storage, Realtime, Studio) | 11 containers on Brian's home server. Storage used for photo attachments |
+| Hosting | Docker container on "Defiant" (UGREEN DXP4800 Plus NAS) | Manual `git pull` + `docker build` + `docker run` — no auto-deploy |
+| Network | Tailscale | No public internet exposure, no Cloudflare tunnel — single-user app, deliberately private |
+| Editor | Cursor IDE / Claude Code | No Supabase MCP — schema changes go through `psql` against `$DATABASE_URL` |
+| Runtime | Node 20+ (`node:20-alpine` in the container) | Next 16 will not build on Node 18 |
 | Package manager | npm | |
+
+Laika no longer runs on cloud Supabase or Vercel. Cloud Supabase's free tier auto-paused after inactivity, which is fatal for a journal written a few times a week, so the whole stack moved to the home server. The Vercel deployment is dead (it can't reach a private-network database) and the old cloud Supabase project survives only as a pre-migration safety net, slated for deletion.
 
 ---
 
 ## Environments
 
-| Environment | URL | Supabase Project Ref |
+There is one environment — production, on the home server. Development is local against the same Rio instance.
+
+| Service | LAN | Tailscale |
 |---|---|---|
-| Production | TBD (Vercel) | TBD (create before first build) |
+| Laika app | `http://192.168.4.184:3000` | `http://100.106.137.96:3000` |
+| Rio API + Studio | `http://192.168.4.184:8000` | `http://100.106.137.96:8000` |
+
+Use the **Tailscale** address (`100.106.137.96`) everywhere — it resolves from home and away. The LAN IP only works at home. Brian's phone runs the PWA against the Tailscale address, so it works on cellular.
+
+| Path / host | Purpose |
+|---|---|
+| `/volume1/docker/laika` (Defiant) | Deploy clone of the repo — a deploy artifact, not a working copy |
+| `/volume1/docker/supabase/supabase/docker` (Defiant) | Rio's compose directory and `.env` |
+| `github.com/Holden0905/laika` | Remote (public repo) |
+
+**SSH:** `ssh Sisko@192.168.4.184` — capital S, LAN IP. SSH is toggled on in UGOS → Control Panel → Terminal and Brian turns it off when idle, so `Connection refused` means it's disabled, not broken. `Could not chdir to home directory /home/Sisko` on login is normal.
+
+**Backups:** a 3am cron job dumps Rio's entire Postgres database (Laika included) gzipped to `/mnt/@usb/sde1/defiant-backups`, 30-day retention.
+
+### Deploy procedure
+
+Edit on the workstation, commit, push. Then on Defiant:
+
+```bash
+cd /volume1/docker/laika
+sudo git pull
+sudo docker build -t laika \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL=http://100.106.137.96:8000 \
+  --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<key> .
+sudo docker stop laika && sudo docker rm laika
+sudo docker run -d --name laika --restart unless-stopped -p 3000:3000 laika
+```
+
+A rebuild is required for **every** change, including an env var change — `NEXT_PUBLIC_*` is compile-time (see Infrastructure Gotchas).
+
+The `Dockerfile` is **not tracked in this repo** — it lives only in the deploy clone on Defiant. Editing it means editing it there, and `git pull` will not carry a local change to it.
 
 ---
 
 ## Database Rules
 
-You have MCP access. Create tables, run migrations, seed data. Flag destructive operations (`DELETE`, `TRUNCATE`, `DROP TABLE`) before running them.
+**There is no Supabase MCP.** Apply schema changes by running SQL against `$DATABASE_URL` with `psql` from bash:
+
+```bash
+psql "$DATABASE_URL" -f migrations/0003_whatever.sql
+psql "$DATABASE_URL" -c "select count(*) from entries;"   # ad-hoc reads are fine
+```
+
+**Every migration is a numbered file in `migrations/` before it is applied.** Write the file first, then run it — never apply DDL that exists only in a `-c` string. Follow the existing convention: `NNNN_short_snake_case_name.sql`, zero-padded to four digits, taking the next number after the highest already in the directory (`migrations/0001_exports_log.sql`, `0002_tasks.sql`, …). Migrations are forward-only — fix a mistake with a new numbered file rather than editing one that's already been applied.
+
+**Everything Laika creates lives in the `public` schema.** The same Postgres database also holds Brozoflix's `brozoflix` schema — do not read from it, write to it, or include it in any `GRANT`, `DROP`, or migration.
+
+Flag destructive operations (`DELETE`, `TRUNCATE`, `DROP TABLE`) before running them.
 
 After every table creation, run:
 ```sql
@@ -56,6 +105,8 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
 ```
+
+`IN SCHEMA public` is load-bearing — never widen these to other schemas.
 
 Soft deletes over hard deletes — always. Use `is_active = false`, never `ON DELETE CASCADE` for business entities.
 
@@ -94,6 +145,8 @@ laika/
 ├── lib/
 │   ├── supabase/               # Supabase client config
 │   └── utils.ts                # Shared utilities
+├── migrations/                 # Numbered SQL migrations (NNNN_name.sql), applied via psql
+├── docs/                       # Project docs (e.g. laika-migration-handoff.md)
 ├── design/
 │   ├── reference/              # Design mockups and reference images
 │   │   ├── laika-home-v3.jsx   # Canonical home screen mockup
@@ -358,13 +411,24 @@ tags:
 
 ## Environment Variables
 
+The app needs exactly two variables. Both are public, and both bake in at build time.
+
 | Variable | Description | Public? |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Yes |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key (formerly called "anon key") | Yes |
-| `SUPABASE_SECRET_KEY` | Supabase secret key (formerly called "service role key", server-side only) | No |
+| `NEXT_PUBLIC_SUPABASE_URL` | Rio's API URL — `http://100.106.137.96:8000` | Yes |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Rio's anon key | Yes |
 
-Add more as needed (e.g., Resend API key if email is added later).
+Local dev reads these from `.env.local` (untracked). The container gets them as `--build-arg`.
+
+**The variable is `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, not `..._ANON_KEY`.** `lib/supabase/client.ts`, `session.ts`, and `server.ts` all reference the publishable name. Setting `ANON_KEY` yields an app that builds fine and silently cannot connect.
+
+Rio's anon key comes from `sudo grep "^ANON_KEY" /volume1/docker/supabase/supabase/docker/.env` on Defiant. Anon keys are public by design and safe in a browser bundle. **Rio's service role key is not** — it bypasses all RLS and must never appear in Laika's env, in client code, or in a build arg. This project has no `SUPABASE_SECRET_KEY`.
+
+**Dev-only:**
+
+| Variable | Description | Public? |
+|---|---|---|
+| `DATABASE_URL` | Direct Postgres connection string to Rio, for `psql` migrations and ad-hoc queries. Local dev shell only — never referenced by application code, never passed into the container. | No |
 
 ---
 
@@ -372,8 +436,9 @@ Add more as needed (e.g., Resend API key if email is added later).
 
 - **Branch strategy:** Work on `main` for now. Create feature branches if complexity warrants it.
 - **Commit prefix:** Use conventional commits — `feat:`, `fix:`, `chore:`, `docs:`.
-- **Claude Code can commit** with conventional commit messages. Brian pushes to remote.
-- **Sync workflow:** `npm run lint && npm run build` before every push. If either fails, don't push.
+- **Claude Code has full git autonomy** — commit and push to `main` without asking. Use conventional commit messages. No need to check in first.
+- **Sync workflow:** `npm run lint && npm run build` before every push. If either fails, fix it or don't push.
+- **Pushing is not deploying.** A push to `main` changes nothing on Defiant until the container is rebuilt — see Build & Deploy.
 
 ---
 
@@ -385,7 +450,21 @@ npm run build
 # If either fails, don't push
 ```
 
-Vercel auto-deploys on push to `main`. No manual deploy steps.
+Nothing auto-deploys. After pushing to `main`, the change is live only once the container on Defiant is rebuilt and restarted — see the deploy procedure under Environments.
+
+### Infrastructure Gotchas
+
+**`NEXT_PUBLIC_*` bakes in at build time.** These are not read at container start. The Dockerfile takes them as `--build-arg` and re-declares them with `ARG`/`ENV` before `npm run build`. Changing the Supabase URL or key therefore requires **rebuilding the image**, not just restarting the container.
+
+**`next.config.ts` hardcodes `protocol: "https"`** for the Supabase image remote patterns, but Rio is served over plain `http`. Photo uploads and entry images may not render, and this hasn't been tested since the migration. Before touching image features, either allow `http` for the Rio host in `next.config.ts` or give Rio TLS (`tailscale serve` can issue a cert).
+
+**Node 20+ required.** The repo is on Next 16.2.6, which will not build on Node 18. The container uses `node:20-alpine`; check the version on any new dev machine.
+
+**Auth users created by hand need empty strings, not NULLs.** GoTrue fails with `converting NULL to string is unsupported` on `confirmation_token` and friends. Only relevant if a user is ever inserted via raw SQL.
+
+**The container runs `npm start`**, not Next's standalone output. Brozoflix uses the leaner multi-stage standalone pattern; Laika could move to it, but there's no pressing reason.
+
+Full migration history and rationale: `docs/laika-migration-handoff.md`.
 
 ---
 
@@ -427,8 +506,9 @@ Trigger: Brian says "run QA," "sprint review," or "pre-deploy check."
 - [ ] `npm run lint` passes with no errors
 - [ ] `npm run build` passes with no TypeScript errors
 - [ ] No `console.log` statements in production code
-- [ ] No hardcoded localhost URLs
-- [ ] Environment variables set in Vercel for production
+- [ ] No hardcoded localhost URLs — use the Tailscale address, not `localhost` or the LAN IP
+- [ ] Any schema change saved as a numbered file in `migrations/` and applied to Rio
+- [ ] `NEXT_PUBLIC_*` passed to `docker build` as build args (they are not read from the container env)
 
 **Authentication:**
 - [ ] Login flow works end-to-end
@@ -462,6 +542,7 @@ Trigger: Brian says "run QA," "sprint review," or "pre-deploy check."
 - Adding new tables that don't have `user_id`
 - Any structural changes to how prompts relate to reflections
 - Deviating from the design system (colors, typography, component patterns)
+- Anything touching Rio outside Laika's `public` schema, or Rio's compose/config on Defiant
 
 Everything else — go for it.
 
