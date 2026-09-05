@@ -1,4 +1,5 @@
 import { CornerMarks, Crosshair, Label, StatusDot } from "@/components/ui/schematic"
+import { DictationButton } from "@/components/ui/dictation-button"
 import { createTrajectory } from "@/app/(authed)/trajectories/actions"
 
 /** Inline add form — same pattern as AddDirectiveForm, title + optional summary. */
@@ -7,9 +8,15 @@ export function AddTrajectoryForm() {
     <div className="relative border border-line-dim p-5">
       <CornerMarks />
       <form action={createTrajectory} className="flex flex-col gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex min-h-[24px] items-center gap-2">
           <Crosshair />
           <Label>New Trajectory // Seed Long-Horizon Vector</Label>
+          <div className="ml-auto">
+            <DictationButton
+              targetId="new-trajectory-summary"
+              fieldLabel="the trajectory summary"
+            />
+          </div>
         </div>
         <input
           name="title"
@@ -21,6 +28,7 @@ export function AddTrajectoryForm() {
           className="border-b border-line-dim bg-transparent px-0 py-2 text-[13px] tracking-[0.04em] text-line outline-none transition-colors placeholder:text-line-dim focus:border-phosphor"
         />
         <textarea
+          id="new-trajectory-summary"
           name="summary"
           rows={2}
           maxLength={500}

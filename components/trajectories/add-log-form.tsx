@@ -1,4 +1,5 @@
 import { CornerMarks, Crosshair, Label, StatusDot } from "@/components/ui/schematic"
+import { DictationButton } from "@/components/ui/dictation-button"
 import { addLogEntry } from "@/app/(authed)/trajectories/actions"
 
 /** Append-only log input. Sits at the top of the log, above the newest entry. */
@@ -8,11 +9,15 @@ export function AddLogForm({ trajectoryId }: { trajectoryId: string }) {
       <CornerMarks />
       <form action={addLogEntry} className="flex flex-col gap-4">
         <input type="hidden" name="trajectory_id" value={trajectoryId} />
-        <div className="flex items-center gap-2">
+        <div className="flex min-h-[24px] items-center gap-2">
           <Crosshair />
           <Label>Log Contact // Append Entry</Label>
+          <div className="ml-auto">
+            <DictationButton targetId="trajectory-log-body" fieldLabel="this log entry" />
+          </div>
         </div>
         <textarea
+          id="trajectory-log-body"
           name="body"
           rows={4}
           required

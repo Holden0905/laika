@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { CheckIndicator, CornerMarks, Crosshair, Label, StatusDot } from "@/components/ui/schematic"
 import { MoodSelector } from "@/components/journal/mood-selector"
 import { MoodBar } from "@/components/journal/mood-bar"
 import { TagInput } from "@/components/journal/tag-input"
 import { TagPill } from "@/components/journal/tag-pill"
+import { DictationButton } from "@/components/ui/dictation-button"
 import { padPromptNumber } from "@/lib/prompts/format"
 import { DeleteResponseButton } from "./delete-response-button"
 
@@ -40,6 +41,8 @@ export function ResponseEditor({
   reflectionId: string
 }) {
   const isAnswered = response !== null
+  // One editor per prompt on the page, so the textarea id has to be unique.
+  const bodyId = `response-body-${useId()}`
   const [editing, setEditing] = useState(false)
   const showForm = !isAnswered || editing
 
@@ -75,7 +78,11 @@ export function ResponseEditor({
       <div className="mt-4 pl-[26px]">
         {showForm ? (
           <form action={saveAction} className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <DictationButton targetId={bodyId} fieldLabel="this response" />
+            </div>
             <textarea
+              id={bodyId}
               name="body"
               required
               rows={5}

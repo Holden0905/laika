@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { CornerMarks, Crosshair, Label, StatusDot } from "@/components/ui/schematic"
+import { DictationButton } from "@/components/ui/dictation-button"
 import { MoodSelector } from "./mood-selector"
 import { TagInput } from "./tag-input"
 import { PhotoManager, type InitialPhoto } from "./photo-manager"
@@ -54,8 +55,12 @@ export function EntryForm({
         />
       </Field>
 
-      <Field label="Field 02 // Title (Optional)">
+      <Field
+        label="Field 02 // Title (Optional)"
+        action={<DictationButton targetId="entry-title" fieldLabel="the entry title" />}
+      >
         <input
+          id="entry-title"
           name="title"
           type="text"
           maxLength={200}
@@ -65,8 +70,12 @@ export function EntryForm({
         />
       </Field>
 
-      <Field label="Field 03 // Body">
+      <Field
+        label="Field 03 // Body"
+        action={<DictationButton targetId="entry-body" fieldLabel="the entry body" />}
+      >
         <textarea
+          id="entry-body"
           name="body"
           required
           rows={14}
@@ -139,12 +148,21 @@ export function EntryForm({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  action,
+}: {
+  label: string
+  children: React.ReactNode
+  action?: React.ReactNode
+}) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex min-h-[24px] items-center gap-2">
         <Crosshair />
         <Label>{label}</Label>
+        {action ? <div className="ml-auto">{action}</div> : null}
       </div>
       {children}
     </div>

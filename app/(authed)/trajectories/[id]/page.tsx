@@ -13,6 +13,7 @@ import { StatusControl } from "@/components/trajectories/status-control"
 import { AddLogForm } from "@/components/trajectories/add-log-form"
 import { AttachDirectiveForm } from "@/components/trajectories/attach-directive-form"
 import { CopyContextButton } from "@/components/trajectories/copy-context-button"
+import { DictationButton } from "@/components/ui/dictation-button"
 import { DangerActionButton } from "@/components/trajectories/danger-action-button"
 import { updateTrajectoryDetails } from "@/app/(authed)/trajectories/actions"
 import { buildTrajectoryMarkdown } from "@/lib/export/markdown"
@@ -159,18 +160,30 @@ export default async function TrajectoryDetailPage({
               className="border-b border-line-dim bg-transparent px-0 py-2 text-[13px] tracking-[0.04em] text-line outline-none transition-colors focus:border-phosphor"
             />
           </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-[9px] uppercase tracking-[0.14em] text-amber-dim">
-              Summary
-            </span>
+          <div className="flex flex-col gap-2">
+            <div className="flex min-h-[24px] items-center gap-2">
+              <label
+                htmlFor="trajectory-summary"
+                className="text-[9px] uppercase tracking-[0.14em] text-amber-dim"
+              >
+                Summary
+              </label>
+              <div className="ml-auto">
+                <DictationButton
+                  targetId="trajectory-summary"
+                  fieldLabel="the trajectory summary"
+                />
+              </div>
+            </div>
             <textarea
+              id="trajectory-summary"
               name="summary"
               rows={2}
               maxLength={500}
               defaultValue={trajectory.summary ?? ""}
               className="resize-none border border-line-ghost bg-transparent p-2 text-[11px] leading-relaxed tracking-[0.02em] text-line-mid outline-none transition-colors focus:border-line-dim"
             />
-          </label>
+          </div>
           <label className="flex flex-col gap-2">
             <span className="text-[9px] uppercase tracking-[0.14em] text-amber-dim">
               Tags — comma separated, normalized to lowercase-hyphenated

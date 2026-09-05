@@ -506,6 +506,18 @@ Nothing auto-deploys. After pushing to `main`, the change is live only once the 
 
 **`next.config.ts` hardcodes `protocol: "https"`** for the Supabase image remote patterns, but Rio is served over plain `http`. Photo uploads and entry images may not render, and this hasn't been tested since the migration. Before touching image features, either allow `http` for the Rio host in `next.config.ts` or give Rio TLS (`tailscale serve` can issue a cert).
 
+**Voice dictation needs a secure context, which this deployment does not have.**
+Browsers gate the microphone behind a secure context, so the Web Speech API only
+runs on `https://` or `http://localhost`. Laika is served over plain http on a
+private IP, so `SpeechRecognition` fails with `not-allowed` before it starts —
+the mic buttons detect this via `window.isSecureContext` and render a red
+UNAVAILABLE state explaining why, rather than looking broken. Dictation works in
+local dev (localhost is a secure context) and will work everywhere once Rio has
+TLS. Chrome can be whitelisted per-browser via
+`chrome://flags/#unsafely-treat-insecure-origin-as-secure`; **iOS Safari has no
+such escape hatch**, so the phone needs real TLS (`tailscale serve`), which also
+fixes the `next.config.ts` image-protocol issue above.
+
 **Node 20+ required.** The repo is on Next 16.2.6, which will not build on Node 18. The container uses `node:20-alpine`; check the version on any new dev machine.
 
 **Auth users created by hand need empty strings, not NULLs.** GoTrue fails with `converting NULL to string is unsupported` on `confirmation_token` and friends. Only relevant if a user is ever inserted via raw SQL.
